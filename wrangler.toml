@@ -1,0 +1,6 @@
+name = "taiwan-election-atlas"
+compatibility_date = "2026-11-11"
+workers_dev = true
+
+[assets]
+directory = "./public"
