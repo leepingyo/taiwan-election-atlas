@@ -1,51 +1,44 @@
 # 臺灣開票互動地圖
 
-地圖涵蓋 22 個縣市、368 個鄉鎮市區及離島，可切換區域立委、議員選區與行政區，檢視首長、立委票數和議員當選名單。
+[正式網站](https://taiwan-election-atlas.leepingyo.workers.dev/)
 
-GitHub 管理版本，Cloudflare Workers Static Assets 提供網站。地圖與資料包含在 public/index.html。
+涵蓋 22 縣市、368 鄉鎮市區及離島，支援行政區、區域立委與議員選區。GitHub 管理版本，Cloudflare Workers 負責發布。
 
-## Cloudflare 部署
+## 部署
 
-在 Cloudflare Dashboard 的 Workers & Pages 建立應用程式，選擇 GitHub，再選擇 leepingyo/taiwan-election-atlas。
+正式分支 main，根目錄 /，Build command 留空，Deploy command 為 npx wrangler deploy。worker.js 提供資料介面，public/ 提供靜態網站；wrangler.toml 綁定 ASSETS。推送 main 後自動建置。
 
-- Worker 名稱使用 taiwan-election-atlas。
-- 正式分支使用 main。
-- 專案根目錄使用儲存庫根目錄。
-- Build command 留空。
-- Deploy command 使用 npx wrangler deploy。
+一般網站及嵌入頁使用靜態資產；/api/2026 會執行 Worker，計入免費方案的 Worker 用量。資料介面回應快取 5 分鐘，不啟用付費服務。
 
-授權 Cloudflare GitHub App 讀取這個儲存庫，完成 Save and Deploy。之後推送至 main 時，Cloudflare 會自動發布。Cloudflare 帳號須由擁有者登入並完成授權。
-
-本專案使用靜態資產。免費方案的靜態資產請求免費且不限次數。 [Cloudflare 官方說明](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/)
-
-## 本機操作
-
-安裝 Node.js 20.19 以上版本，執行 npm install，再執行 npm run dev。
-
-命令列部署可執行 npx wrangler login，再執行 npm run deploy。
+本機使用 Node.js 20.19 以上版本，執行 npm install、npm run dev。部署前可執行 npm run deploy:check。
 
 ## 編輯與嵌入
 
-右上角「地圖編輯」可調整各區塊配色，並匯入 2026 年候選人及開票 JSON。設定儲存在目前瀏覽器。要讓讀者看到設定，下載發佈版 HTML，再用該檔案更新 public/index.html 並提交。
-
-網站部署後，在其他網站使用 iframe，將 src 換成實際 workers.dev 網址。
-
+頁首顯示風傳媒 SVG logo，右上角「HTML 嵌入碼」可複製：
 ```html
-<iframe
-  src="https://YOUR-WORKER.YOUR-SUBDOMAIN.workers.dev/"
-  title="臺灣開票地圖"
-  style="display:block;width:100%;height:900px;border:0"
-  loading="lazy">
-</iframe>
+<iframe src="https://taiwan-election-atlas.leepingyo.workers.dev/?embed=1"
+  title="風傳媒・臺灣開票地圖"
+  style="display:block;width:100%;height:1000px;border:0"
+  loading="lazy"></iframe>
 ```
+嵌入頁保留 logo，隱藏編輯控制。HTML 編輯器必須允許 iframe。
 
-## 資料版本
+「地圖編輯」可調整配色並匯入開票 JSON，設定儲存於目前瀏覽器。下載發佈版 HTML 後，用該檔更新 public/index.html 並提交，才能讓其他讀者看見設定。
 
-- 首長預設顯示 2022 年地方選舉結果。
-- 區域立委使用 2024 年第 11 屆選舉結果。
-- 議員選區及席次使用 2026 年公告，另可查看 2022 年當選名單。
-- 2026 年候選人及開票資料由編輯者整理後匯入 JSON。
+## 2026 資料與 API
 
-資料取自 [中選會開放資料](https://data.cec.gov.tw/)、[第11屆立委選區公告](https://web.cec.gov.tw/central/article/39952)及 [2026 年地方選舉公告](https://web.cec.gov.tw/central/article/63626)。
+預設顯示 2026 年。已匯入中選會 2026-09-07 製表、2026-11-13 核對的[官方候選人登記名冊](https://web.cec.gov.tw/central/article/64708)：81 位首長、1,502 位議員登記人，涵蓋 22 縣市及各議員選區。
 
-行政界線來自國土測繪中心的 [鄉鎮市區界](https://data.gov.tw/dataset/7441)及 [村里界](https://data.gov.tw/dataset/7438)，依政府資料開放授權條款第 1 版利用。網頁地圖使用簡化界線。
+這是登記名冊快照，不是最終審定名單。投開票日為 2026-11-28，票數為 null、當選標記為 false，頁面顯示「待開票」，不以 0 票冒充開票結果。
+
+本站 GET /api/2026 傳回 public/data/cec-2026.json，含來源、製表日期、核對日期、資料狀態與 results；它是本站整理的 JSON 介面，**不是中選會官方即時 API**。目前未驗證到可公開介接的 2026 即時開票 API，因此未假設端點或自動抓取票數。後續需要根據正式公開介面另外接入並核對選區、候選人與當選公告。
+
+每筆 results 資料沿用 [姓名, 政黨, 票數或null, 當選布林值]。議員尚未開票時列出登記人；有開票資料時只列已標記當選者，按票數排序，不自行推定當選。
+
+更新官方名冊時，應同步更新 JSON 快照與 HTML 內嵌備援資料。編輯者匯入的資料優先於內建資料。下載 HTML 保留內建資料，可離線使用。
+
+## 其他資料
+
+可切換 2022 年首長及議員當選結果；區域立委使用 2024 年第 11 屆結果，2026 年不顯示為立委改選。議員選區與席次使用[2026 年公告](https://web.cec.gov.tw/central/article/63626)。
+
+其他來源：[中選會開放資料](https://data.cec.gov.tw/)、[第11屆立委選區公告](https://web.cec.gov.tw/central/article/39952)、國土測繪中心[鄉鎮市區界](https://data.gov.tw/dataset/7441)及[村里界](https://data.gov.tw/dataset/7438)。圖資依政府資料開放授權條款第 1 版利用，網頁使用簡化界線，離島為放大示意，馬祖以連江縣標示。
