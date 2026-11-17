@@ -93,6 +93,7 @@ dialog{border:1px solid var(--line);border-radius:13px;background:var(--white);c
 </section>
 <section class="card" aria-label="選舉結果">
 <div class="panel-head"><p class="eyebrow" id="panel-kicker">結果與席次</p><h2 id="heading">各縣市選舉</h2><p id="subheading"></p></div>
+<div class="panel-body" style="padding-bottom:0"><p class="fine">資料來源：<a href="https://web.cec.gov.tw/" target="_blank" rel="noopener">中選會</a></p><button type="button" id="openCecApi">導入中選會2026開票API</button><p class="fine" id="cecImportInfo" role="status">尚未接入即時開票來源</p></div>
 <div class="panel-body" id="detail"></div>
 </section>
 </div>
@@ -104,6 +105,14 @@ dialog{border:1px solid var(--line);border-radius:13px;background:var(--white);c
 <textarea id="embedCode" class="embed-code" aria-label="HTML 嵌入碼" readonly spellcheck="false"></textarea>
 <p id="embedStatus" role="status"></p>
 <div class="actions"><button id="copyEmbed" class="primary">複製嵌入碼</button><button id="closeEmbed">關閉</button></div>
+</dialog>
+<dialog id="cecApiDialog" aria-labelledby="cecApiTitle">
+<h2 id="cecApiTitle">導入中選會2026開票API</h2>
+<p>取得中選會授權端點後，輸入資料網址。支援本地圖 JSON 格式；官方原始格式須先由轉接服務轉換。網址需支援跨來源讀取（CORS），請勿填入私人金鑰。</p>
+<form id="cecApiForm"><label for="cecApiUrl">開票資料網址（HTTPS）</label><input id="cecApiUrl" type="url" required placeholder="https://…" style="width:100%;padding:.7rem;margin:10px 0" autocomplete="off" spellcheck="false">
+<p class="fine">僅更新目前瀏覽器；全站及其他嵌入頁不會同步。匯入後請備份設定，或下載發佈版 HTML。</p>
+<p id="cecApiStatus" role="status" aria-live="polite"></p>
+<div class="actions"><button type="submit" id="fetchCecApi" class="primary">連線並匯入</button><button type="button" id="cecApiSample">下載 API 格式範例</button><button type="button" id="closeCecApi">關閉</button></div></form>
 </dialog>
 <dialog id="editor">
 <h2>地圖編輯</h2><p>選擇縣市或地方圖層的區塊後可指定顏色。設定儲存在本機瀏覽器。下載發佈版 HTML 可把設定一併交付給讀者。</p>
@@ -120,6 +129,7 @@ dialog{border:1px solid var(--line);border-radius:13px;background:var(--white);c
 <script id="preset" type="application/json">{}</script>
 <script>
 'use strict';
+document.addEventListener('contextmenu', event => event.preventDefault());
 const $ = id => document.getElementById(id);
 const data = JSON.parse($('map-data').textContent);
 const preset = JSON.parse($('preset').textContent);
@@ -485,6 +495,42 @@ $('minus').onclick=()=>{zoom=Math.max(.72,zoom/1.25);renderMap();};
 $('reset').onclick=()=>{zoom=1;renderMap();};
 $('edit').hidden=Boolean(preset.readonly) || embedded;
 $('edit').onclick=editor;
+$('openCecApi').hidden=Boolean(preset.readonly) || embedded;
+$('openCecApi').onclick=()=>{$('cecApiStatus').textContent='';$('cecApiDialog').showModal();};
+$('closeCecApi').onclick=()=>$('cecApiDialog').close();
+$('cecApiSample').onclick=()=>download('cec-2026-api-example.json',JSON.stringify({schemaVersion:1,electionYear:2026,results:{'臺北市':{mayor:[['請替換為候選人姓名','請填政黨或無黨籍',null,false]]}}},null,2),'application/json');
+function validateCecApi(payload){
+  if(!payload || payload.schemaVersion!==1 || payload.electionYear!==2026 || payload.status==='registration_snapshot' || !validResults(payload.results) || !Object.keys(payload.results).length || !Object.values(payload.results).some(e=>Object.values(e).some(v=>Array.isArray(v)?v.length:Object.values(v).some(rows=>rows.length))))throw Error('資料不是可用的 2026 開票格式。請依下載範例轉換；內建名冊端點不是開票來源。');
+  return payload.results;
+}
+function mergeCecResults(current,incoming){
+  const next=structuredClone(current);
+  for(const [c,e] of Object.entries(incoming)){
+    next[c]={...next[c]};
+    for(const [k,rows] of Object.entries(e))next[c][k]=k==='mayor'?rows:{...next[c][k],...rows};
+  }
+  return next;
+}
+$('cecApiForm').onsubmit=async event=>{
+  event.preventDefault();
+  const submit=$('fetchCecApi');submit.disabled=true;
+  $('cecApiStatus').textContent='連線中…';
+  try{
+    const endpoint=new URL($('cecApiUrl').value.trim());
+    if(endpoint.protocol!=='https:' || endpoint.username || endpoint.password)throw Error('請使用不含帳號密碼的 HTTPS 網址。');
+    const response=await fetch(endpoint.href,{signal:AbortSignal.timeout(15000),credentials:'omit',cache:'no-store',referrerPolicy:'no-referrer',redirect:'error'});
+    if(!response.ok)throw Error('來源回應 HTTP '+response.status+'。');
+    const payload=await response.json();
+    const incoming=validateCecApi(payload);
+    const merged=mergeCecResults(settings.results,incoming);
+    if(!validResults(merged))throw Error('合併資料格式錯誤。');
+    settings.results=merged;era='2026';councilEra='2026';save();render();
+    const message='已匯入 '+Object.keys(incoming).length+' 個縣市 · '+new Date().toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})+'（本機）';
+    $('cecApiStatus').textContent=message;
+    $('cecImportInfo').textContent=message;
+  }catch(error){$('cecApiStatus').textContent='匯入失敗，原資料保留。'+(error.name==='TimeoutError'?'連線逾時。':error.message)+' 若來源未開放 CORS，需使用授權轉接服務。';}
+  finally{submit.disabled=false;}
+};
 $('close').onclick=()=>$('editor').close();
 $('colorTarget').onchange=updateColor;
 $('setColor').onclick=()=>{
@@ -496,6 +542,10 @@ $('saveHtml').onclick=()=>{
   const source=document.documentElement.cloneNode(true);
   source.querySelector('#editor').removeAttribute('open');
   source.querySelector('#embedDialog').removeAttribute('open');
+  source.querySelector('#cecApiDialog').removeAttribute('open');
+  source.querySelector('#cecApiUrl').value='';
+  source.querySelector('#cecApiUrl').removeAttribute('value');
+  source.querySelector('#cecApiStatus').textContent='';
   source.querySelector('#preset').textContent=JSON.stringify({colors:settings.colors,results:settings.results,readonly:true,era}).replace(/</g,'\\u003c');
   for (const id of ['map','detail','insets','tip','county','town','places','legend','status','colorTarget','colorValue','embedStatus'])source.querySelector('#'+id).replaceChildren();
   download('taiwan-election-publish.html','<!doctype html>\n'+source.outerHTML,'text/html;charset=utf-8');
