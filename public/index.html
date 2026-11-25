@@ -39,6 +39,8 @@ dialog{border:1px solid var(--line);border-radius:13px;background:var(--white);c
 @media(max-width:420px){.top>div{min-height:62px;gap:8px}.storm-logo{width:117px;height:36px}.brand-title{display:none}.header-actions{gap:5px}.top button{font-size:11px;padding:7px}.insets{top:9px;bottom:22px;left:7px;width:calc(33% - 7px);gap:8px}.inset{padding:7px 3px 4px;font-size:12px}.inset-title{padding-inline:3px}.inset-title small{display:none}.inset svg{height:auto}.map-note{font-size:9px;right:6px}}
 .incumbent{display:inline-flex;gap:7px;align-items:center}.incumbent img{object-fit:contain;background:white;border-radius:3px}.reserved-tab{width:84px;height:34px;display:inline-block}.reserved-office{min-height:250px}.referendum{padding:20px 16px;border-top:1px solid var(--line)}.referendum h2{font-size:19px;margin:5px 0 12px}.ref-title{font-size:16px;line-height:1.7;margin:0 0 15px}.ref-votes{display:grid;grid-template-columns:1fr 1fr;gap:12px}.ref-votes>div{padding:13px;background:#eff6f1;border-radius:7px}.ref-votes span{font-size:12px;display:block}.ref-votes strong{font-size:18px;display:block;margin-top:7px}.referendum .fine{line-height:1.7}@media(max-width:420px){.ref-votes{grid-template-columns:1fr}.incumbent-map .maptext{font-size:10px}}
 .brand-title{border-left:0;padding-left:0}@media(max-width:420px){.brand-title{display:inline;font-size:13px}}button,select,input,textarea{font-family:inherit}
+
+.visitor-counter{position:fixed;right:16px;bottom:14px;z-index:80;padding:9px 11px 10px;border:1px solid #d5d9dc;border-radius:9px;background:#fff;box-shadow:0 3px 14px #0002;color:#202428;font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;pointer-events:none}.visitor-label{display:block;font-size:10px;letter-spacing:.14em;margin-bottom:5px;color:#555}.visitor-digits{display:flex;gap:4px}.visitor-digit{display:block;position:relative;width:26px;height:40px;perspective:180px;border-radius:4px;box-shadow:0 1px 2px #0003;font-variant-numeric:tabular-nums;font-weight:700;font-size:25px}.vc-half{position:absolute;left:0;width:100%;height:20px;overflow:hidden;background:#25292e;color:#fff;backface-visibility:hidden}.vc-half>span{position:absolute;left:0;width:100%;height:40px;text-align:center;line-height:40px}.vc-top{top:0;border-radius:4px 4px 0 0;border-bottom:1px solid #101214;transform-origin:bottom;background:linear-gradient(#363b42,#25292e)}.vc-bottom{bottom:0;border-radius:0 0 4px 4px;border-top:1px solid #454b52;transform-origin:top}.vc-bottom>span{top:-20px}.vc-flap.vc-top{z-index:3;animation:vc-fold .14s ease-in forwards}.vc-flap.vc-bottom{z-index:2;transform:rotateX(90deg);animation:vc-unfold .18s ease-out forwards}@keyframes vc-fold{to{transform:rotateX(-90deg)}}@keyframes vc-unfold{to{transform:rotateX(0)}}@media(max-width:420px){.visitor-counter{right:8px;bottom:8px;padding:7px 8px}.visitor-digit{width:23px}.visitor-digits{gap:3px}}@media(prefers-reduced-motion:reduce){.vc-flap{display:none!important}}
 </style>
 </head>
 <body>
@@ -581,6 +583,49 @@ if (location.protocol === 'https:' && location.hostname === 'taiwan-election-atl
 }
 
 
+</script>
+<aside id="visitorCounter" class="visitor-counter" role="img" aria-label="累計訪客，讀取中"><span class="visitor-label">累計訪客</span><span class="visitor-digits" aria-hidden="true"></span></aside>
+<script>(function(){
+ const root=document.getElementById('visitorCounter');
+ const digits=root.querySelector('.visitor-digits');
+ const label=root.querySelector('.visitor-label');
+ let shown='      ';
+ for(let i=0;i<6;i++){
+  const cell=document.createElement('span');cell.className='visitor-digit';
+  cell.innerHTML='<span class="vc-half vc-top"><span> </span></span><span class="vc-half vc-bottom"><span> </span></span>';
+  digits.append(cell);
+ }
+ function paint(count){
+  if(!Number.isSafeInteger(count)||count<0)return;
+  const next=String(Math.min(count,999999)).padStart(6,'0');
+  label.textContent=count>999999?'累計訪客 999999+':'累計訪客';
+  root.setAttribute('aria-label','累計訪客 '+count.toLocaleString('zh-TW')+' 人');
+  root.title='同一瀏覽器以匿名識別碼去重；清除儲存資料或不同嵌入環境可能再次計數。累計 '+count.toLocaleString('zh-TW')+' 人';
+  [...digits.children].forEach((cell,i)=>{
+   if(shown[i]===next[i])return;
+   cell.querySelectorAll('.vc-flap').forEach(f=>f.remove());
+   cell.querySelectorAll('.vc-half>span').forEach(s=>s.textContent=next[i]);
+   for(const [kind,value] of [['vc-top',shown[i]],['vc-bottom',next[i]]]){
+    const flap=document.createElement('span');flap.className='vc-half vc-flap '+kind;
+    const text=document.createElement('span');text.textContent=value;flap.append(text);
+    flap.style.animationDelay=(i*45+(kind==='vc-bottom'?140:0))+'ms';cell.append(flap);
+    flap.addEventListener('animationend',()=>flap.remove(),{once:true});
+   }
+  });shown=next;
+ }
+ async function start(){
+  try{
+   let id;
+   try{const key='atlas-visitor-v1';id=localStorage.getItem(key);if(!id){id=crypto.randomUUID();localStorage.setItem(key,id);}}catch{}
+   const options={signal:AbortSignal.timeout(10000),credentials:'omit',cache:'no-store'};
+   if(id){options.method='POST';options.headers={'Content-Type':'application/json'};options.body=JSON.stringify({id});}
+   const response=await fetch('https://taiwan-election-atlas.pages.dev/api/visitors',options);
+   if(!response.ok)throw Error('Counter unavailable');
+   const result=await response.json();paint(result.count);
+  }catch{root.title='訪客計數暫時無法取得';root.setAttribute('aria-label','累計訪客，暫時無法取得');}
+ }
+ if(navigator.locks)navigator.locks.request('atlas-visitor',start);else start();
+})();
 </script>
 </body></html>
 

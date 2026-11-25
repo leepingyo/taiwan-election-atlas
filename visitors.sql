@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS visitor_ids (id TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS visitor_counter (id INTEGER PRIMARY KEY CHECK(id=1), total INTEGER NOT NULL DEFAULT 0);
+INSERT OR IGNORE INTO visitor_counter(id,total) VALUES(1,0);
+CREATE TRIGGER IF NOT EXISTS increment_visitors AFTER INSERT ON visitor_ids
+BEGIN
+ UPDATE visitor_counter SET total=total+1 WHERE id=1;
+END;

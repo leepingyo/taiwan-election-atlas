@@ -25,4 +25,25 @@ export async function onRequestGet({env}){
  }catch{return reply({...base,status:'source_unavailable',message:'中選會來源暫不可用或格式尚未確認，保留上次資料'},503);}
 }
 
-export default {async fetch(request,env){const u=new URL(request.url);if(u.pathname==='/api/live2026'){if(!['GET','HEAD'].includes(request.method))return new Response('Method not allowed',{status:405});const r=await onRequestGet({env});return request.method==='HEAD'?new Response(null,{status:r.status,headers:r.headers}):r;}return env.ASSETS.fetch(request);}};
+export async function handleVisitors(request,env){
+ const headers={'Cache-Control':'no-store','Content-Type':'application/json; charset=utf-8','Access-Control-Allow-Origin':'https://taiwan-election-atlas.pages.dev'};
+ const reply=(data,status=200)=>Response.json(data,{status,headers});
+ if(!['GET','POST'].includes(request.method))return reply({error:'Method not allowed'},405);
+ if(!env.VISITORS)return reply({error:'Counter storage unavailable'},503);
+ try{
+  if(request.method==='POST'){
+   const origin=request.headers.get('Origin');
+   if(origin&&origin!=='https://taiwan-election-atlas.pages.dev')return reply({error:'Invalid origin'},403);
+   if(!request.headers.get('Content-Type')?.startsWith('application/json'))return reply({error:'Expected JSON'},415);
+   if(Number(request.headers.get('Content-Length'))>256)return reply({error:'Payload too large'},413);
+   const text=await request.text();if(text.length>256)return reply({error:'Payload too large'},413);
+   let payload;try{payload=JSON.parse(text);}catch{return reply({error:'Invalid JSON'},400);}
+   if(typeof payload?.id!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.id))return reply({error:'Invalid visitor ID'},400);
+   const result=await env.VISITORS.batch([env.VISITORS.prepare('INSERT OR IGNORE INTO visitor_ids(id) VALUES (?)').bind(payload.id.toLowerCase()),env.VISITORS.prepare('SELECT total FROM visitor_counter WHERE id=1')]);
+   return reply({count:result[1].results[0].total});
+  }
+  const row=await env.VISITORS.prepare('SELECT total FROM visitor_counter WHERE id=1').first();
+  return reply({count:row.total});
+ }catch{return reply({error:'Counter temporarily unavailable'},503);}
+}
+export default {async fetch(request,env){const u=new URL(request.url);if(u.pathname==='/api/visitors')return handleVisitors(request,env);if(u.pathname==='/api/live2026'){if(!['GET','HEAD'].includes(request.method))return new Response('Method not allowed',{status:405});const r=await onRequestGet({env});return request.method==='HEAD'?new Response(null,{status:r.status,headers:r.headers}):r;}return env.ASSETS.fetch(request);}};
