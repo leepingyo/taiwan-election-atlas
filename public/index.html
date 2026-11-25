@@ -53,8 +53,8 @@ dialog{border:1px solid var(--line);border-radius:13px;background:var(--white);c
 <div class="legend" id="legend"></div><section class="referendum" aria-labelledby="ref-heading">
 <p class="eyebrow">2026 全國性公民投票</p><h2 id="ref-heading">全國性公民投票案第22案</h2>
 <p class="ref-title">你是否支持政府使用「核電」振興經濟，以廢除「非核家園」的能源政策？</p>
-<div class="ref-votes"><div><span>支持票數（比例）</span><strong>待開票（—）</strong></div><div><span>不支持票數（比例）</span><strong>待開票（—）</strong></div></div>
-<p class="fine">2026 年 11 月 28 日投票；目前尚無官方開票票數。比例以支持票＋不支持票為分母，不含無效票，尚未開票不顯示 0%。此欄為全國統計，不隨地圖選區切換。</p>
+<div class="ref-votes"><div><span>支持票數（比例）</span><strong id="refSupport">待開票（—）</strong></div><div><span>不支持票數（比例）</span><strong id="refOppose">待開票（—）</strong></div></div>
+<p class="fine" id="refNote">2026 年 11 月 28 日投票；目前尚無官方開票票數。比例以支持票＋不支持票為分母，不含無效票，尚未開票不顯示 0%。此欄為全國統計，不隨地圖選區切換。</p>
 <a class="fine" href="https://info.cec.gov.tw/vote2026/static/file/ebook/index.html" target="_blank" rel="noopener">中選會公投公報</a>
 </section>
 </section>
@@ -100,7 +100,7 @@ document.addEventListener('contextmenu', event => event.preventDefault());
 const $ = id => document.getElementById(id);
 const data = JSON.parse($('map-data').textContent);
 const preset = JSON.parse($('preset').textContent);
-const embedded = new URLSearchParams(location.search).get('embed') === '1';
+const embedded = location.pathname.endsWith('/embed.html') || new URLSearchParams(location.search).get('embed') === '1';
 if (embedded) document.documentElement.classList.add('embedded');
 const storageKey = 'tw-election-atlas-v1';
 const counties = ['臺北市','新北市','基隆市','桃園市','新竹市','新竹縣','苗栗縣','臺中市','彰化縣','南投縣','雲林縣','嘉義市','嘉義縣','臺南市','高雄市','屏東縣','宜蘭縣','花蓮縣','臺東縣','澎湖縣','金門縣','連江縣'];
@@ -122,11 +122,12 @@ const button = (text, attrs='') => '<button type="button" '+attrs+'>'+escape(tex
 const tag = text => '<span class="tag">'+escape(text)+'</span>';
 const legend = () => Object.entries(colors).map(([k,n])=>'<span><i class="swatch" style="background:var(--'+k+')"></i>'+n+'</span>').join('');
 const districtTitle = id => '第 '+id+' 選區';
-const result2026 = c => ({...data[c].registration26,...settings.results[c]});
+let liveResults = {};
+const result2026 = c => ({...data[c].registration26,...settings.results[c],...liveResults[c]});
 const townMayors = c => result2026(c).townMayor || data[c].townMayors26 || {};
 const hasTownMayors = c => Boolean(c && c.endsWith('縣') && Object.keys(townMayors(c)).length);
 let townMayorChoice = '';
-const source2026 = () => '<div class="note">2026 年 11 月 28 日投開票。內建資料為中選會 9 月 7 日製表的<a href="https://web.cec.gov.tw/central/article/64708" target="_blank" rel="noopener">候選人登記名冊</a>（11 月 13 日核對），非最終審定名單或即時開票資料。未有官方票數時顯示「待開票」。</div>';
+const source2026 = () => (county ? liveResults[county] : Object.keys(liveResults).length) ? '<div class="note">資料來源：中選會。計票數字為開票速報；當選身分以正式公告為準。未提供票數的區域保留登記名冊。</div>' : '<div class="note">2026 年 11 月 28 日投開票。內建資料為中選會 9 月 7 日製表的<a href="https://web.cec.gov.tw/central/article/64708" target="_blank" rel="noopener">候選人登記名冊</a>（11 月 13 日核對），非最終審定名單或即時開票資料。未有官方票數時顯示「待開票」。</div>';
 const mayors = c => era==='2026' ? result2026(c).mayor || [] : data[c].mayor22['0'].results;
 const mayorWinner = c => mayors(c).find(r=>r[3])?.[1];
 const mayorLabel = () => era+' 縣市首長';
@@ -430,7 +431,8 @@ function showEmbedCode() {
   if (url.protocol !== 'https:' && url.protocol !== 'http:') {
     url.href = 'https://taiwan-election-atlas.pages.dev/';
   }
-  url.search = '?embed=1';
+  url.pathname = '/embed.html';
+  url.search = '';
   url.hash = '';
   $('embedCode').value = '<iframe\n  src="'+escape(url.href)+'"\n  title="2026九合一選舉開票"\n  style="display:block;width:100%;height:1000px;border:0"\n  loading="lazy">\n</iframe>';
   $('embedStatus').textContent = '';
@@ -537,6 +539,32 @@ async function loadFile(input,config){
 }
 $('upload').onchange=ev=>loadFile(ev.target,false);
 $('settingsFile').onchange=ev=>loadFile(ev.target,true);
+if(embedded){
+  for(const id of ['edit','openCecApi','embed','editor','cecApiDialog','embedDialog'])$(id)?.remove();
+}
+async function syncOfficialCounts(){
+  if(document.hidden)return;
+  const info=$('cecImportInfo');
+  try{
+    const response=await fetch('https://taiwan-election-atlas.pages.dev/api/live2026',{signal:AbortSignal.timeout(12000),credentials:'omit'});
+    const payload=await response.json();
+    if(payload.status==='awaiting_official_feed'){if(info)info.textContent='中選會即時計票資料尚未接入';return;}
+    if(!response.ok)throw Error('來源暫不可用');
+    if(payload.schemaVersion!==1||payload.electionYear!==2026||!['live_count','final_results'].includes(payload.status)||!validResults(payload.results)||!Object.keys(payload.results).length||!Number.isFinite(Date.parse(payload.updatedAt)))throw Error('格式尚未確認');
+    if(payload.referendum && (payload.referendum.id!==22||!['support','oppose'].every(k=>Number.isSafeInteger(payload.referendum[k])&&payload.referendum[k]>=0)))throw Error('公投格式尚未確認');
+    liveResults=payload.results;render();
+    if(info)info.textContent='中選會資料更新：'+new Date(payload.updatedAt).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'});
+    if(payload.referendum){
+      const r=payload.referendum,total=r.support+r.oppose;
+      $('refSupport').textContent=fmt(r.support)+' 票（'+(total?(100*r.support/total).toFixed(2)+'%':'—')+'）';
+      $('refOppose').textContent=fmt(r.oppose)+' 票（'+(total?(100*r.oppose/total).toFixed(2)+'%':'—')+'）';
+      $('refNote').textContent='資料來源：中選會；比例以支持票＋不支持票為分母，不含無效票。此欄為全國統計，不隨選區切換。';
+    }
+  }catch{if(info)info.textContent=Object.keys(liveResults).length?'來源暫不可用，顯示上次取得資料':'中選會即時計票資料尚未取得';}
+}
+syncOfficialCounts();
+setInterval(syncOfficialCounts,60000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncOfficialCounts();});
 new ResizeObserver(renderMap).observe($('map'));
 render();
 
