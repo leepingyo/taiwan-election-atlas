@@ -428,7 +428,7 @@ function validResults(value) {
 function showEmbedCode() {
   const url = new URL(location.href);
   if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    url.href = 'https://taiwan-election-atlas.leepingyo.workers.dev/';
+    url.href = 'https://taiwan-election-atlas.pages.dev/';
   }
   url.search = '?embed=1';
   url.hash = '';
@@ -542,7 +542,7 @@ render();
 
 // The public endpoint serves a verified CEC registration snapshot, not live counts.
 // Inline data keeps downloaded HTML and temporarily offline embeds usable.
-if (location.protocol === 'https:' && location.hostname === 'taiwan-election-atlas.leepingyo.workers.dev') {
+if (location.protocol === 'https:' && location.hostname === 'taiwan-election-atlas.pages.dev') {
   fetch('/api/2026', {signal: AbortSignal.timeout(8000)})
     .then(r => {if(!r.ok)throw Error('Snapshot unavailable'); return r.json();})
     .then(payload => {
