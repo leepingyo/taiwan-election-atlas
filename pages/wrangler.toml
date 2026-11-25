@@ -1,0 +1,8 @@
+name = "taiwan-election-atlas"
+pages_build_output_dir = "../public"
+compatibility_date = "2026-11-11"
+
+[[d1_databases]]
+binding = "VISITORS"
+database_name = "taiwan-election-atlas-visitors"
+database_id = "039b7937-632e-4fcb-9c5e-1a92b25f8f7a"
