@@ -45,5 +45,10 @@ for(const file of ['index.html','embed.html']){
  assert.equal((elements.get('detail').innerHTML.match(/class="elected-badge"/g)||[]).length,1,file+' mayor detail elected badge');
  assert.ok(vm.runInContext("rows([['甲','無黨籍',100,true]],false)",context).includes('class="elected-badge"'),file+' council and township rows retain official elected badge');
  assert.ok(!vm.runInContext("rows([['甲','無黨籍',null,true]],false)",context).includes('class="elected-badge"'),file+' missing votes do not show elected');
+ vm.runInContext("county='臺北市';tab='council';councilChoice='1';liveResults['臺北市'].council={'1':[['候選甲','無黨籍',10,false],['候選乙','中國國民黨',50,false],['候選丙','民主進步黨',30,true]]};renderDetail()",context);
+ const councilHtml=elements.get('detail').innerHTML;
+ assert.ok(councilHtml.includes('候選甲')&&councilHtml.includes('候選乙')&&councilHtml.includes('候選丙'),file+' council counts show unelected candidates too');
+ assert.ok(councilHtml.indexOf('候選乙')<councilHtml.indexOf('候選丙')&&councilHtml.indexOf('候選丙')<councilHtml.indexOf('候選甲'),file+' council counts rank by votes');
+ assert.equal((councilHtml.match(/class="elected-badge"/g)||[]).length,1);
  console.log('PASS '+file+': national list, mayor names/portraits, township mayors and council render');
 }

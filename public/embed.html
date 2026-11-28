@@ -369,10 +369,10 @@ function renderDetail(){
       const current=items[councilChoice]?councilChoice:match || '';
       html+='<label class="fine">議員選區　<select id="councilChoice">'+option('','全部選區')+Object.keys(items).map(k=>option(k,districtTitle(k))).join('')+'</select></label>';
       if(councilEra==='2022') html+='<div class="note">歷屆當選結果依 2022 年選區列示。當選身分採中選會資料，同區當選人依票數排序。</div>';
-      else html+=source2026()+'<p class="fine">2026 年選區與席次依中選會公告。尚未開票時列出登記人；已有票數時僅列出標記當選者，依票數排序。原住民選區另列。</p>';
+      else html+=source2026()+'<p class="fine">2026 年選區與席次依中選會公告。尚未開票時列出登記人；開票期間列出所有候選人與票數，依票數排序，每 30 秒更新。官方標記當選者顯示當選圖樣；原住民選區另列。</p>';
       html+=(current?[current]:Object.keys(items)).map(k=>{
         const e=items[k], all=councilEra==='2026'?(result2026(county).council?.[k]||[]):e.results;
-        const result=councilEra==='2026'&&all.some(r=>r[2]!==null)?all.filter(r=>r[3]):all;
+        const result=councilEra==='2026'?rankedCandidates(all):all;
         const scope=e.scope?'<p class="scope">'+escape(e.scope)+'</p>':'';
         return '<p class="summary">'+districtTitle(k)+(e.seats?'　·　'+e.seats+' 席':'')+'</p>'+scope+rows(result,false);
       }).join('');
