@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "electionYear": 2026,
-  "checkedAt": "2026-11-28T14:35:03.783Z",
+  "checkedAt": "2026-11-28T17:32:39.248Z",
   "declarations": [
     {
       "county": "臺北市",
@@ -192,7 +192,9 @@
       "sourceUrl": "https://www.cna.com.tw/news/aipl/202611285005.aspx",
       "sourceTitle": "中央社：九合一選舉縣市長當選名單（11/28 21:54 更新）",
       "correctionSourceUrl": "https://www.ftnn.com.tw/news/600707",
-      "correctionReason": "22:26 原始報導稱雙方未宣布當選，與先前中央社名單有衝突，暫撤自行宣布標記，等待再次查證；此狀態為網站撤標，不代表候選人正式撤回聲明。"
+      "correctionReason": "22:26 原始報導稱雙方未宣布當選，與先前中央社名單有衝突，暫撤自行宣布標記，等待再次查證；此狀態為網站撤標，不代表候選人正式撤回聲明。",
+      "latestSourceUrl": "https://www.cna.com.tw/news/aipl/202611290010.aspx",
+      "latestOutcomeNote": "11/29 中央社報導中選會計票劉建國領先173票，張嘉郡擬提驗票；保留歷史宣布記錄，不恢復現行宣布標記，不代替正式當選公告。"
     },
     {
       "county": "花蓮縣",
@@ -202,6 +204,15 @@
       "verifiedAt": "2026-11-28T14:00:21.031Z",
       "sourceUrl": "https://www.cna.com.tw/news/aipl/202611285005.aspx",
       "sourceTitle": "中央社：九合一選舉縣市長當選名單（11/28 21:54 更新）"
+    },
+    {
+      "county": "雲林縣",
+      "name": "劉建國",
+      "status": "self_declared",
+      "announcedAt": null,
+      "verifiedAt": "2026-11-28T17:32:39.248Z",
+      "sourceUrl": "https://www.cna.com.tw/news/aipl/202611290002.aspx",
+      "sourceTitle": "中央社：劉建國也宣布當選雲林縣長，張嘉郡擬提驗票（11/29 00:07 更新）"
     }
   ],
   "councilAdjustments": []
