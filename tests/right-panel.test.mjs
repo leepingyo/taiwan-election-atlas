@@ -18,5 +18,18 @@ for(const file of ['index.html','embed.html']){
  assert.ok(elements.get('detail').innerHTML.includes('東引鄉'),file+' township list');
  vm.runInContext("county='臺北市';tab='council';renderDetail()",context);
  assert.ok(elements.get('detail').innerHTML.includes('第 1 選區'),file+' council list');
+ vm.runInContext("county='';settings.colors['county|臺北市|']='blue';liveResults['臺北市']={mayor:[['郭璽','台灣麻將最大黨',10,false],['蔣萬安','中國國民黨',900,false],['沈伯洋','民主進步黨',1200,false]]};renderDetail()",context);
+ assert.equal(vm.runInContext("fill('county','臺北市')",context),'var(--green)',file+' current leader overrides old manual color');
+ let card=elements.get('detail').innerHTML.match(/data-c="臺北市"[\s\S]*?<\/button>/)[0];
+ assert.ok(card.indexOf('沈伯洋')<card.indexOf('蔣萬安'));assert.ok(!card.includes('郭璽'));assert.ok(card.includes('1,200 票')&&card.includes('900 票'));
+ vm.runInContext("liveResults['臺北市'].mayor[1][2]=1500;renderDetail()",context);
+ assert.equal(vm.runInContext("fill('county','臺北市')",context),'var(--blue)',file+' lead changes update color');
+ vm.runInContext("liveResults['臺北市'].mayor[2][2]=1500;renderDetail()",context);
+ assert.equal(vm.runInContext("fill('county','臺北市')",context),'var(--empty)',file+' tie stays neutral');
+ assert.ok(elements.get('detail').innerHTML.includes('同票領先'));
+ vm.runInContext("liveResults['臺北市'].mayor.forEach(r=>r[2]=0);renderDetail()",context);
+ assert.equal(vm.runInContext("fill('county','臺北市')",context),'var(--empty)',file+' zero totals do not create a leader');
+ vm.runInContext("liveResults['臺北市'].mayorByTown={'松山區':[['蔣萬安','中國國民黨',5,false],['沈伯洋','民主進步黨',8,false]]}",context);
+ assert.equal(vm.runInContext("fill('town','臺北市','松山區')",context),'var(--green)',file+' township uses its own mayor counts');
  console.log('PASS '+file+': national list, mayor names/portraits, township mayors and council render');
 }
