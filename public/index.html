@@ -126,6 +126,8 @@ const tag = text => '<span class="tag">'+escape(text)+'</span>';
 const legend = () => Object.entries(colors).map(([k,n])=>'<span><i class="swatch" style="background:var(--'+k+')"></i>'+n+'</span>').join('');
 const districtTitle = id => '第 '+id+' 選區';
 let liveResults = {};
+let officialFeedMessage='中選會官方站連線檢查中';
+let syncingOfficialCounts=false;
 const result2026 = c => ({...data[c].registration26,...settings.results[c],...liveResults[c]});
 const townMayors = c => result2026(c).townMayor || data[c].townMayors26 || {};
 const hasTownMayors = c => Boolean(c && c.endsWith('縣') && Object.keys(townMayors(c)).length);
