@@ -22,6 +22,7 @@ for(const file of ['index.html','embed.html']){
  assert.equal(vm.runInContext("fill('county','臺北市')",context),'var(--green)',file+' current leader overrides old manual color');
  let card=elements.get('detail').innerHTML.match(/data-c="臺北市"[\s\S]*?<\/button>/)[0];
  assert.ok(card.indexOf('沈伯洋')<card.indexOf('蔣萬安'));assert.ok(!card.includes('郭璽'));assert.ok(card.includes('1,200 票')&&card.includes('900 票'));
+ assert.ok(card.includes('class="candidate-party-badge"')&&card.includes('民主進步黨黨徽'));
  assert.ok(!card.includes('class="elected-badge"'),file+' leading does not mean elected');
  vm.runInContext("liveResults['臺北市'].mayor[1][2]=1500;renderDetail()",context);
  assert.equal(vm.runInContext("fill('county','臺北市')",context),'var(--blue)',file+' lead changes update color');
@@ -52,6 +53,8 @@ for(const file of ['index.html','embed.html']){
  assert.equal((councilHtml.match(/class="elected-badge"/g)||[]).length,1);
  vm.runInContext("county='';liveResults['臺北市'].mayor[0][3]=false;selfDeclarations={'臺北市':[{name:'蔣萬安',status:'self_declared',sourceUrl:'https://www.cna.com.tw/news/aipl/example.aspx',sourceTitle:'候選人宣布消息',verifiedAt:'2026-11-28T12:00:00Z'}]};renderDetail()",context);
  assert.ok(elements.get('detail').innerHTML.includes('自行宣布當選'));
+ assert.ok(elements.get('detail').innerHTML.includes('class="ballot-mark"'));
+ assert.ok(!vm.runInContext("selfDeclaredBadge({sourceTitle:'查核來源'})",context).includes('✓'));
  assert.ok(elements.get('detail').innerHTML.includes('https://www.cna.com.tw/news/aipl/example.aspx'));
  vm.runInContext("liveResults['臺北市'].mayor[0][3]=true;renderDetail()",context);
  assert.equal((elements.get('detail').innerHTML.match(/class="self-declared-badge"/g)||[]).length,0,file+' official election supersedes self declaration');

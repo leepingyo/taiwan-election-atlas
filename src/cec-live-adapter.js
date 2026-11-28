@@ -70,6 +70,19 @@ export function parseReferendumTable(html){
  }
  throw Error('Unconfirmed referendum format');
 }
+export function parseReferendumElectorate(html){
+ for(const [,table] of html.matchAll(/<table\b[^>]*>([\s\S]*?)<\/table>/gi)){
+  const head=table.match(/<thead\b[^>]*>([\s\S]*?)<\/thead>/i)?.[1]||'';
+  const headers=[...head.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/gi)].map(m=>clean(m[1]));
+  const i=headers.indexOf('投票權人總數');if(i<0)continue;
+  const body=table.match(/<tbody\b[^>]*>([\s\S]*?)<\/tbody>/i)?.[1]||'';
+  const rows=[...body.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)];if(rows.length!==1)throw Error('Ambiguous electorate');
+  const cells=[...rows[0][1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map(m=>clean(m[1]));
+  const value=number(cells[i]||'');if(!Number.isSafeInteger(value)||value<=0)throw Error('Invalid electorate');
+  return value;
+ }
+ return null;
+}
 async function text(url){
  if(!official(new URL(url)))throw Error('Untrusted source');
  const r=await fetch(url,{redirect:'manual',signal:AbortSignal.timeout(8000),cf:{cacheTtl:30,cacheEverything:true}});
@@ -92,7 +105,8 @@ export async function official2026(request,env){
   const home=await text(portal),local=await entry(kind==='referendum'?'2026-ref':'2026-local',home);
   if(local.stage==='prior')return reply({...base,status:'awaiting_counting',checkedAt:new Date().toISOString(),officialStage:'prior',message:'已連接中選會官方站，等待公布計票資料'});
   if(kind==='referendum'){
-   const html=await text(new URL('F1/00000000000000000.html',local.url).href),referendum={...parseReferendumTable(html),progress:parseProgress(html)};
+   const html=await text(new URL('F1/00000000000000000.html',local.url).href),referendum={...parseReferendumTable(html),progress:parseProgress(html),electorate:parseReferendumElectorate(html)};
+   if(referendum.electorate!==null&&referendum.support+referendum.oppose>referendum.electorate)throw Error('Invalid referendum total');
    const payload={...base,status:local.stage==='final'?'final_results':'live_count',updatedAt:new Date().toISOString(),results:{},referendum};
    try{await env.VISITORS?.prepare('INSERT INTO election_feed_cache(scope,payload) VALUES (?,?) ON CONFLICT(scope) DO UPDATE SET payload=excluded.payload').bind(key,JSON.stringify(payload)).run();}catch{}
    return reply(payload);
@@ -130,7 +144,7 @@ function reply(p,status=200){return Response.json(p,{status,headers:{'Cache-Cont
 async function cachedOfficial2026(request,env){
  const u=new URL(request.url),key=new URL('https://taiwan-election-atlas.pages.dev/api/live2026');
  for(const name of ['county','kind'])if(u.searchParams.has(name))key.searchParams.set(name,u.searchParams.get(name));
- key.searchParams.set('_v','30s-council-revisions');
+ key.searchParams.set('_v','30s-referendum-threshold');
  const cache=globalThis.caches?.default,cacheRequest=new Request(key.href);
  const hit=await cache?.match(cacheRequest);if(hit)return hit;
  const response=await official2026(request,env);

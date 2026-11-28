@@ -1,0 +1,31 @@
+{
+  "sources": [
+    [
+      "新黨",
+      "https://upload.wikimedia.org/wikipedia/commons/c/c0/Np_logo.png"
+    ],
+    [
+      "台聯黨",
+      "https://thumb.wikimedia.org/wikipedia/en/thumb/b/bc/Taiwan_Solidarity_Union_logo.svg/250px-Taiwan_Solidarity_Union_logo.svg.png"
+    ],
+    [
+      "綠黨",
+      "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/a5/Green_Party_Taiwan_logo.png/250px-Green_Party_Taiwan_logo.png"
+    ],
+    [
+      "台灣基進",
+      "https://thumb.wikimedia.org/wikipedia/en/thumb/6/63/Taiwan_Statebuilding_Party.svg/250px-Taiwan_Statebuilding_Party.svg.png"
+    ]
+  ],
+  "additional": [
+    [
+      "台灣民眾黨",
+      "https://en.wikipedia.org/wiki/Taiwan_People%27s_Party"
+    ],
+    [
+      "時代力量",
+      "https://newpowerparty.tw/media-center"
+    ]
+  ],
+  "notice": "識別用途；無黨籍使用既有中性識別，未有核實黨徽的政黨保留文字，不以其他黨徽替代。"
+}
