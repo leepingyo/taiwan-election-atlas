@@ -61,6 +61,6 @@ for(const file of ['index.html','embed.html']){
  assert.ok(elements.get('detail').innerHTML.includes('候選丙：婦女保障名額當選'));
  context.URL=URL;context.AbortSignal=AbortSignal;context.fetch=async()=>({ok:true,json:async()=>JSON.parse(await readFile(new URL('../public/data/election-annotations.json',import.meta.url),'utf8'))});
  await vm.runInContext('syncElectionAnnotations()',context);
- assert.equal(vm.runInContext('Object.values(selfDeclarations).flat().length',context),JSON.parse(await readFile(new URL('../public/data/election-annotations.json',import.meta.url),'utf8')).declarations.length,file+' verified declarations load via actual sync');
+ assert.equal(vm.runInContext('Object.values(selfDeclarations).flat().length',context),JSON.parse(await readFile(new URL('../public/data/election-annotations.json',import.meta.url),'utf8')).declarations.filter(d=>d.status==='self_declared').length,file+' verified declarations load via actual sync');
  console.log('PASS '+file+': national list, mayor names/portraits, township mayors and council render');
 }
