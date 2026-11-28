@@ -130,7 +130,7 @@ const result2026 = c => ({...data[c].registration26,...settings.results[c],...li
 const townMayors = c => result2026(c).townMayor || data[c].townMayors26 || {};
 const hasTownMayors = c => Boolean(c && c.endsWith('縣') && Object.keys(townMayors(c)).length);
 let townMayorChoice = '';
-const source2026 = () => (county ? liveResults[county] : Object.keys(liveResults).length) ? '<div class="note">資料來源：中選會。計票數字為開票速報；當選身分以正式公告為準。未提供票數的區域保留登記名冊。</div>' : '<div class="note">2026 年 11 月 28 日投開票。縣市首長姓名、號次及照片已依中選會候選人資料於 11 月 27 日核對，並提供正式選舉公報。其他職位仍為 9 月 7 日製表的<a href="https://web.cec.gov.tw/central/article/64708" target="_blank" rel="noopener">候選人登記名冊</a>（11 月 13 日核對），非最終審定名單或即時開票資料。未有官方票數時顯示「待開票」。</div>';
+const source2026 = () => '<div class="note">資料來源：<a href="https://vote.cec.gov.tw/" target="_blank" rel="noopener">中選會</a>；'+escape(officialFeedMessage)+'。每 60 秒檢查更新。</div>'+((county ? liveResults[county] : Object.keys(liveResults).length) ? '<div class="note">資料來源：中選會。計票數字為開票速報；當選身分以正式公告為準。未提供票數的區域保留登記名冊。</div>' : '<div class="note">2026 年 11 月 28 日投開票。縣市首長姓名、號次及照片已依中選會候選人資料於 11 月 27 日核對，並提供正式選舉公報。其他職位仍為 9 月 7 日製表的<a href="https://web.cec.gov.tw/central/article/64708" target="_blank" rel="noopener">候選人登記名冊</a>（11 月 13 日核對），非最終審定名單或即時開票資料。未有官方票數時顯示「待開票」。</div>');
 const mayors = c => era==='2026' ? result2026(c).mayor || [] : data[c].mayor22['0'].results;
 const mayorWinner = c => mayors(c).find(r=>r[3])?.[1];
 const mayorLabel = () => era+' 縣市首長';
@@ -182,6 +182,7 @@ function navigate(c='',mode='leg',id='',island='') {
   councilChoice=mode==='council'?id:'';
   if(mode==='council') councilEra='2026';
   zoom=1;render();
+  syncOfficialCounts();
 }
 function choose(id) {
   if (!county) { navigate(id); return; }
@@ -552,24 +553,46 @@ if(embedded){
   for(const id of ['edit','openCecApi','embed','editor','cecApiDialog','embedDialog'])$(id)?.remove();
 }
 async function syncOfficialCounts(){
-  if(document.hidden)return;
-  const info=$('cecImportInfo');
-  try{
-    const response=await fetch('https://taiwan-election-atlas.pages.dev/api/live2026',{signal:AbortSignal.timeout(12000),credentials:'omit'});
+  if(document.hidden||syncingOfficialCounts)return;
+  syncingOfficialCounts=true;
+  const info=$('cecImportInfo'),base='https://taiwan-election-atlas.pages.dev/api/live2026';
+  let accepted=0,issue=false;
+  const ingest=async suffix=>{
+    const response=await fetch(base+suffix,{signal:AbortSignal.timeout(45000),credentials:'omit'});
     const payload=await response.json();
-    if(payload.status==='awaiting_official_feed'){if(info)info.textContent='中選會即時計票資料尚未接入';return;}
-    if(!response.ok)throw Error('來源暫不可用');
-    if(payload.schemaVersion!==1||payload.electionYear!==2026||!['live_count','final_results'].includes(payload.status)||!validResults(payload.results)||!Object.keys(payload.results).length||!Number.isFinite(Date.parse(payload.updatedAt)))throw Error('格式尚未確認');
-    if(payload.referendum && (payload.referendum.id!==22||!['support','oppose'].every(k=>Number.isSafeInteger(payload.referendum[k])&&payload.referendum[k]>=0)))throw Error('公投格式尚未確認');
-    liveResults=payload.results;render();
-    if(info)info.textContent='中選會資料更新：'+new Date(payload.updatedAt).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'});
-    if(payload.referendum){
-      const r=payload.referendum,total=r.support+r.oppose;
-      $('refSupport').textContent=fmt(r.support)+' 票（'+(total?(100*r.support/total).toFixed(2)+'%':'—')+'）';
-      $('refOppose').textContent=fmt(r.oppose)+' 票（'+(total?(100*r.oppose/total).toFixed(2)+'%':'—')+'）';
-      $('refNote').textContent='資料來源：中選會；比例以支持票＋不支持票為分母，不含無效票。此欄為全國統計，不隨選區切換。';
+    if(payload.status==='awaiting_counting'||payload.status==='awaiting_official_feed'){
+      officialFeedMessage=payload.status==='awaiting_counting'?'已連接中選會官方站，等待公布計票資料':'中選會即時計票資料尚未接入';return false;
     }
-  }catch{if(info)info.textContent=Object.keys(liveResults).length?'來源暫不可用，顯示上次取得資料':'中選會即時計票資料尚未取得';}
+    if(payload.status==='not_applicable')return true;
+    const ref=payload.referendum;
+    if(!response.ok||payload.schemaVersion!==1||payload.electionYear!==2026||!['live_count','final_results'].includes(payload.status)||!Number.isFinite(Date.parse(payload.updatedAt))||!validResults(payload.results)||(!Object.keys(payload.results).length&&!ref))throw Error('未取得經驗證的票數');
+    if(ref&&(ref.id!==22||!['support','oppose'].every(k=>Number.isSafeInteger(ref[k])&&ref[k]>=0)))throw Error('公投格式未確認');
+    for(const [c,e] of Object.entries(payload.results)){
+      const current=liveResults[c]||={};
+      for(const [k,v] of Object.entries(e))current[k]=Array.isArray(v)?v:{...current[k],...v};
+    }
+    accepted++;issue ||= !!(payload.stale||payload.partial);
+    officialFeedMessage=(payload.stale?'官方來源暫不可用，顯示上次驗證資料':payload.partial?'部分官方表格尚未取得，保留已驗證資料':'中選會計票速報')+'；取得時間 '+new Date(payload.updatedAt).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'});
+    if(ref){
+      const total=ref.support+ref.oppose;
+      $('refSupport').textContent=fmt(ref.support)+' 票（'+(total?(100*ref.support/total).toFixed(2)+'%':'—')+'）';
+      $('refOppose').textContent=fmt(ref.oppose)+' 票（'+(total?(100*ref.oppose/total).toFixed(2)+'%':'—')+'）';
+      $('refNote').textContent='資料來源：中選會；比例以支持票＋不支持票為分母，不含無效票。全國統計，不隨選區切換。'+(payload.stale?'官方來源暫不可用，保留上次資料。':'');
+    }
+    return true;
+  };
+  try{
+    const ready=await ingest('');
+    if(ready){
+      const c=county;
+      const requests=['?kind=referendum'];
+      if(c)for(const kind of ['mayorByTown','council','townMayor'])requests.push('?county='+encodeURIComponent(c)+'&kind='+kind);
+      const outcomes=await Promise.allSettled(requests.map(ingest));
+      issue ||= outcomes.some(r=>r.status==='rejected');
+      if(issue)officialFeedMessage+='；部分項目未更新，保留已驗證票數';
+    }
+  }catch{officialFeedMessage=Object.keys(liveResults).length?'官方來源暫不可用，顯示上次驗證資料':'官方計票資料尚未公布、暫不可用或格式待確認';}
+  finally{syncingOfficialCounts=false;if(info)info.textContent=officialFeedMessage;render();}
 }
 syncOfficialCounts();
 setInterval(syncOfficialCounts,60000);
