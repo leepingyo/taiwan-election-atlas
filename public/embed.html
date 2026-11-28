@@ -518,7 +518,7 @@ async function syncOfficialCounts(){
       const total=ref.support+ref.oppose;
       $('refSupport').textContent=fmt(ref.support)+' 票（'+(total?(100*ref.support/total).toFixed(2)+'%':'—')+'）';
       $('refOppose').textContent=fmt(ref.oppose)+' 票（'+(total?(100*ref.oppose/total).toFixed(2)+'%':'—')+'）';
-      $('refNote').textContent='資料來源：中選會；比例以支持票＋不支持票為分母，不含無效票。全國統計，不隨選區切換。'+(payload.stale?'官方來源暫不可用，保留上次資料。':'');
+      $('refNote').textContent='資料來源：中選會（開票進度：'+(progressText(ref.progress)||(payload.status==='final_results'?'開票完成':'官方尚未提供百分比'))+'）；每 30 秒更新。比例以支持票＋不支持票為分母，不含無效票。全國統計，不隨選區切換。取得時間：'+new Date(payload.updatedAt).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})+'。'+(payload.stale?'官方來源暫不可用，保留上次資料。':'');
     }
     return true;
   };

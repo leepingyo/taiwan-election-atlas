@@ -55,6 +55,8 @@ export default {async fetch(request,env){const u=new URL(request.url);if(u.pathn
 
 
 
+
+
 // BEGIN OFFICIAL 2026 ADAPTER
 // Official 2026 HTML tables, not an undocumented JSON API.
 const portal='https://vote.cec.gov.tw/home/zh-TW/';
@@ -99,11 +101,14 @@ export function parseStage(html){
 }
 export function parseReferendumTable(html){
  if(/模擬|測試資料|演練/.test(clean(html))||!/(?:第\s*22\s*案)/.test(clean(html)))throw Error('Wrong referendum');
+ const title=clean(html.match(/<div\b[^>]*class=["'][^"']*vote-table-header-title[^"']*["'][^>]*>([\s\S]*?)<\/div>/i)?.[1]||'');
+ const nationalTitle=/全國性公民投票\s*第\s*22\s*案\s*投票結果\s*[-－—]\s*全國$/.test(title);
  for(const [,table] of html.matchAll(/<table\b[^>]*>([\s\S]*?)<\/table>/gi)){
   const rows=[...table.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)].map(m=>[...m[1].matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)].map(c=>clean(c[1])));
   const h=rows.findIndex(r=>r.includes('同意票數')&&r.includes('不同意票數'));if(h<0)continue;
   const a=rows[h].indexOf('同意票數'),b=rows[h].indexOf('不同意票數');
-  const totals=rows.slice(h+1).filter(r=>r.some(c=>c==='全國'||c==='總計'||c==='合計'));
+  const dataRows=rows.slice(h+1);
+  const totals=nationalTitle&&rows[h].length===2&&dataRows.length===1&&dataRows[0].length===2?dataRows:dataRows.filter(r=>r.some(c=>c==='全國'||c==='總計'||c==='合計'));
   if(totals.length!==1)throw Error('No unique national referendum total');
   const support=number(totals[0][a]||''),oppose=number(totals[0][b]||'');
   if(!Number.isSafeInteger(support)||!Number.isSafeInteger(oppose)||support<0||oppose<0)throw Error('Invalid referendum votes');
@@ -133,7 +138,7 @@ export async function official2026(request,env){
   const home=await text(portal),local=await entry(kind==='referendum'?'2026-ref':'2026-local',home);
   if(local.stage==='prior')return reply({...base,status:'awaiting_counting',checkedAt:new Date().toISOString(),officialStage:'prior',message:'已連接中選會官方站，等待公布計票資料'});
   if(kind==='referendum'){
-   const referendum=parseReferendumTable(await text(new URL('F1/00000000000000000.html',local.url).href));
+   const html=await text(new URL('F1/00000000000000000.html',local.url).href),referendum={...parseReferendumTable(html),progress:parseProgress(html)};
    const payload={...base,status:local.stage==='final'?'final_results':'live_count',updatedAt:new Date().toISOString(),results:{},referendum};
    try{await env.VISITORS?.prepare('INSERT INTO election_feed_cache(scope,payload) VALUES (?,?) ON CONFLICT(scope) DO UPDATE SET payload=excluded.payload').bind(key,JSON.stringify(payload)).run();}catch{}
    return reply(payload);
@@ -168,7 +173,7 @@ function reply(p,status=200){return Response.json(p,{status,headers:{'Cache-Cont
 async function cachedOfficial2026(request,env){
  const u=new URL(request.url),key=new URL('https://taiwan-election-atlas.pages.dev/api/live2026');
  for(const name of ['county','kind'])if(u.searchParams.has(name))key.searchParams.set(name,u.searchParams.get(name));
- key.searchParams.set('_v','30s-progress');
+ key.searchParams.set('_v','30s-ref-national');
  const cache=globalThis.caches?.default,cacheRequest=new Request(key.href);
  const hit=await cache?.match(cacheRequest);if(hit)return hit;
  const response=await official2026(request,env);
