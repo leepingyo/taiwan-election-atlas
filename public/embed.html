@@ -107,11 +107,25 @@ const districtTitle = id => '第 '+id+' 選區';
 let liveResults = {};
 let officialFeedMessage='中選會官方站連線檢查中';
 let syncingOfficialCounts=false;
+let officialProgressByCounty={},officialNationalProgress=null,officialCountingStage='unknown';
+const progressText = p => {
+  if(!p||!Number.isFinite(p.percent)||p.percent<0||p.percent>100)return '';
+  const stations=Number.isSafeInteger(p.completed)&&Number.isSafeInteger(p.total)&&p.total>0&&p.completed>=0&&p.completed<=p.total?'（'+fmt(p.completed)+'／'+fmt(p.total)+' 所）':'';
+  return p.percent.toFixed(2)+'%'+stations;
+};
+const officialProgressText = () => {
+  if(officialCountingStage==='prior')return '尚未開票';
+  const progress=progressText(county?officialProgressByCounty[county]:officialNationalProgress);
+  if(progress)return progress;
+  if(officialCountingStage==='final')return '開票完成（以官方公告為準）';
+  return officialCountingStage==='count'?'開票中；官方尚未提供'+(county?'此縣市':'全國')+'開票百分比':'進度待確認';
+};
+
 const result2026 = c => ({...data[c].registration26,...settings.results[c],...liveResults[c]});
 const townMayors = c => result2026(c).townMayor || data[c].townMayors26 || {};
 const hasTownMayors = c => Boolean(c && c.endsWith('縣') && Object.keys(townMayors(c)).length);
 let townMayorChoice = '';
-const source2026 = () => '<div class="note">資料來源：<a href="https://vote.cec.gov.tw/" target="_blank" rel="noopener">中選會</a>；'+escape(officialFeedMessage)+'。每 60 秒檢查更新。</div>'+((county ? liveResults[county] : Object.keys(liveResults).length) ? '<div class="note">資料來源：中選會。計票數字為開票速報；當選身分以正式公告為準。未提供票數的區域保留登記名冊。</div>' : '<div class="note">2026 年 11 月 28 日投開票。縣市首長姓名、號次及照片已依中選會候選人資料於 11 月 27 日核對，並提供正式選舉公報。其他職位仍為 9 月 7 日製表的<a href="https://web.cec.gov.tw/central/article/64708" target="_blank" rel="noopener">候選人登記名冊</a>（11 月 13 日核對），非最終審定名單或即時開票資料。未有官方票數時顯示「待開票」。</div>');
+const source2026 = () => '<div class="note">資料來源：<a href="https://vote.cec.gov.tw/" target="_blank" rel="noopener">中選會</a>（開票進度：'+escape(officialProgressText())+'）；'+escape(officialFeedMessage)+'。每 30 秒檢查更新。</div>'+((county ? liveResults[county] : Object.keys(liveResults).length) ? '<div class="note">資料來源：中選會。計票數字為開票速報；當選身分以正式公告為準。未提供票數的區域保留登記名冊。</div>' : '<div class="note">2026 年 11 月 28 日投開票。縣市首長姓名、號次及照片已依中選會候選人資料於 11 月 27 日核對，並提供正式選舉公報。其他職位仍為 9 月 7 日製表的<a href="https://web.cec.gov.tw/central/article/64708" target="_blank" rel="noopener">候選人登記名冊</a>（11 月 13 日核對），非最終審定名單或即時開票資料。未有官方票數時顯示「待開票」。</div>');
 const mayors = c => era==='2026' ? result2026(c).mayor || [] : data[c].mayor22['0'].results;
 const rankedCandidates = rs => [...rs].sort((a,b)=>(b[2]??-1)-(a[2]??-1));
 const hasCountedVotes = rs => rs.some(r=>Number.isSafeInteger(r[2])&&r[2]>=0);
@@ -476,9 +490,10 @@ async function syncOfficialCounts(){
   const info=$('cecImportInfo'),base='https://taiwan-election-atlas.pages.dev/api/live2026';
   let accepted=0,issue=false;
   const ingest=async suffix=>{
-    const response=await fetch(base+suffix,{signal:AbortSignal.timeout(45000),credentials:'omit'});
+    const response=await fetch(base+suffix,{cache:'no-store',signal:AbortSignal.timeout(45000),credentials:'omit'});
     const payload=await response.json();
     if(payload.status==='awaiting_counting'||payload.status==='awaiting_official_feed'){
+      if(!Object.keys(liveResults).length)officialCountingStage=payload.status==='awaiting_counting'?'prior':'unknown';
       officialFeedMessage=payload.status==='awaiting_counting'?'已連接中選會官方站，等待公布計票資料':'中選會即時計票資料尚未接入';return false;
     }
     if(payload.status==='not_applicable')return true;
@@ -490,6 +505,11 @@ async function syncOfficialCounts(){
       for(const [k,v] of Object.entries(e))current[k]=Array.isArray(v)?v:{...current[k],...v};
     }
     accepted++;issue ||= !!(payload.stale||payload.partial);
+    if(!suffix){
+      officialCountingStage=payload.status==='final_results'?'final':'count';
+      officialNationalProgress=payload.progress||null;
+      officialProgressByCounty=payload.progressByCounty||{};
+    }
     officialFeedMessage=(payload.stale?'官方來源暫不可用，顯示上次驗證資料':payload.partial?'部分官方表格尚未取得，保留已驗證資料':'中選會計票速報')+'；取得時間 '+new Date(payload.updatedAt).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'});
     if(ref){
       const total=ref.support+ref.oppose;
@@ -513,7 +533,7 @@ async function syncOfficialCounts(){
   finally{syncingOfficialCounts=false;if(info)info.textContent=officialFeedMessage;render();}
 }
 syncOfficialCounts();
-setInterval(syncOfficialCounts,60000);
+setInterval(syncOfficialCounts,30000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncOfficialCounts();});
 new ResizeObserver(renderMap).observe($('map'));
 render();

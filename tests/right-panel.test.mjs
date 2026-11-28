@@ -31,5 +31,12 @@ for(const file of ['index.html','embed.html']){
  assert.equal(vm.runInContext("fill('county','臺北市')",context),'var(--empty)',file+' zero totals do not create a leader');
  vm.runInContext("liveResults['臺北市'].mayorByTown={'松山區':[['蔣萬安','中國國民黨',5,false],['沈伯洋','民主進步黨',8,false]]}",context);
  assert.equal(vm.runInContext("fill('town','臺北市','松山區')",context),'var(--green)',file+' township uses its own mayor counts');
+ vm.runInContext("county='';officialCountingStage='prior';renderDetail()",context);
+ assert.ok(elements.get('detail').innerHTML.includes('開票進度：尚未開票'));
+ vm.runInContext("officialCountingStage='count';officialNationalProgress={completed:1250,total:2000,percent:62.5};renderDetail()",context);
+ assert.ok(elements.get('detail').innerHTML.includes('62.50%（1,250／2,000 所）'));
+ vm.runInContext("county='臺北市';tab='mayor';officialProgressByCounty={};renderDetail()",context);
+ assert.ok(elements.get('detail').innerHTML.includes('官方尚未提供此縣市開票百分比'));
+ assert.ok(elements.get('detail').innerHTML.includes('每 30 秒檢查更新'));
  console.log('PASS '+file+': national list, mayor names/portraits, township mayors and council render');
 }
