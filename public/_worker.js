@@ -57,6 +57,7 @@ export default {async fetch(request,env){const u=new URL(request.url);if(u.pathn
 
 
 
+
 // BEGIN OFFICIAL 2026 ADAPTER
 // Official 2026 HTML tables, not an undocumented JSON API.
 const portal='https://vote.cec.gov.tw/home/zh-TW/';
@@ -87,12 +88,26 @@ export function parseCandidateTable(html,target){
    const n=cells[name],p=cells[party].replace('無黨籍及未經政黨推薦','無黨籍'),v=number(cells[votes]);
    if(!n||!p||!Number.isSafeInteger(v)||v<0||seen.has(n))throw Error('Invalid result row');
    if(target.names&&!target.names.includes(n))throw Error('Candidate identity mismatch');
-   seen.add(n);rows.push([n,p,v,elected>=0&&/^(?:當選|當選人|\*|◎|●|○)$/.test(cells[elected])]);
+   seen.add(n);rows.push([n,p,v,elected>=0&&/^(?:當選|當選人|\*|◎|●|○|(?:婦女|女性)(?:保障|應當選)?名額(?:調整)?當選)$/.test(cells[elected])]);
   }
   if(!rows.length||(target.names&&rows.length!==target.names.length))throw Error('Incomplete result table');
   return rows;
  }
  throw Error('Unconfirmed official table format');
+}
+export function parseCouncilMetadata(html,rows){
+ const s=clean(html),notes=[];
+ for(const [,tr] of html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)){
+  const cells=[...tr.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map(m=>clean(m[1]));
+  const reason=cells.find(c=>/^(?:婦女|女性)(?:保障|應當選)?名額(?:調整)?當選$/.test(c));
+  if(reason){const r=rows.find(r=>r[3]&&cells.includes(r[0]));if(r)notes.push({name:r[0],reason});}
+ }
+ return {seats:number(s.match(/(?:^|\s)應選人數\s*[：:]\s*(\d+)/)?.[1]||''),womenSeats:number(s.match(/婦女應當選名額\s*[：:]\s*(\d+)/)?.[1]||''),officialWinnersAvailable:[...html.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/gi)].some(m=>/當選/.test(clean(m[1]))),womenQuotaNotes:notes};
+}
+export function councilRevision(metadata,rows,previousRows,previousMetadata,updatedAt){
+ const before=(previousRows||[]).filter(r=>r[3]).map(r=>r[0]).sort(),after=rows.filter(r=>r[3]).map(r=>r[0]).sort();
+ const changed=metadata.officialWinnersAvailable&&before.length>0&&JSON.stringify(before)!==JSON.stringify(after);
+ return {...metadata,...(changed?{revision:{updatedAt,previousWinners:before,currentWinners:after,message:'中選會當選名單已更新'}}:previousMetadata?.revision?{revision:previousMetadata.revision}:{})};
 }
 export function parseStage(html){
  const m=html.match(/\.api\.run\(\s*['"]zh-TW['"]\s*,\s*['"](prior|count|final)['"]/);
@@ -145,12 +160,14 @@ export async function official2026(request,env){
   }
   const targets=config.targets.filter(t=>t.kind===kind&&(!county||t.county===county));
   if(!targets.length)return reply({...base,status:'not_applicable',message:'此行政區無此項選舉'});
-  const results={},errors=[],progressByCounty={};let successful=0;
+  const results={},errors=[],progressByCounty={},councilMetadata={};let successful=0,previous=null;
+  if(kind==='council')try{const row=await env.VISITORS?.prepare('SELECT payload FROM election_feed_cache WHERE scope=?').bind(key).first();if(row)previous=JSON.parse(row.payload);}catch{}
   // Limit concurrency and keep each request within the Workers Free subrequest limit.
   for(let start=0;start<targets.length;start+=5)await Promise.all(targets.slice(start,start+5).map(async t=>{
    try{
     const html=await text(new URL(t.path,local.url).href),rows=parseCandidateTable(html,t);
     if(kind==='mayor'){const progress=parseProgress(html);if(progress)progressByCounty[t.county]=progress;}
+    if(kind==='council'){const meta=councilRevision(parseCouncilMetadata(html,rows),rows,previous?.results?.[t.county]?.council?.[t.id],previous?.councilMetadata?.[t.county]?.[t.id],new Date().toISOString());meta.sourceUrl=new URL(t.path,local.url).href;(councilMetadata[t.county]||={})[t.id]=meta;}
     const c=results[t.county]||={};
     if(t.kind==='mayor')c.mayor=rows;
     else(c[t.kind]||={})[t.id]=rows;
@@ -159,7 +176,8 @@ export async function official2026(request,env){
   }));
   if(!successful)throw Error('No verified count tables');
   if(errors.length)try{const cached=await env.VISITORS?.prepare('SELECT payload FROM election_feed_cache WHERE scope=?').bind(key).first();if(cached){const old=JSON.parse(cached.payload);for(const [c,e] of Object.entries(old.results||{})){const fresh=results[c]||={};for(const [k,v] of Object.entries(e))fresh[k]=Array.isArray(v)?fresh[k]||v:{...v,...fresh[k]};}}}catch{}
-  const payload={...base,status:local.stage==='final'?'final_results':'live_count',updatedAt:new Date().toISOString(),results,partial:errors.length>0,unavailable:errors,...(kind==='mayor'?{progressByCounty}:{})};
+  if(kind==='council'&&previous?.councilMetadata)for(const [c,m] of Object.entries(previous.councilMetadata))councilMetadata[c]={...m,...councilMetadata[c]};
+  const payload={...base,status:local.stage==='final'?'final_results':'live_count',updatedAt:new Date().toISOString(),results,partial:errors.length>0,unavailable:errors,...(kind==='mayor'?{progressByCounty}:kind==='council'?{councilMetadata}:{})};
   const ps=Object.values(progressByCounty);
   if(kind==='mayor'&&!county&&!errors.length&&ps.length===22&&ps.every(p=>Number.isSafeInteger(p.completed)&&Number.isSafeInteger(p.total))){const completed=ps.reduce((n,p)=>n+p.completed,0),total=ps.reduce((n,p)=>n+p.total,0);payload.progress={completed,total,percent:Math.round(completed/total*10000)/100};}
   try{await env.VISITORS?.prepare('INSERT INTO election_feed_cache(scope,payload) VALUES (?,?) ON CONFLICT(scope) DO UPDATE SET payload=excluded.payload').bind(key,JSON.stringify(payload)).run();}catch{}
@@ -173,7 +191,7 @@ function reply(p,status=200){return Response.json(p,{status,headers:{'Cache-Cont
 async function cachedOfficial2026(request,env){
  const u=new URL(request.url),key=new URL('https://taiwan-election-atlas.pages.dev/api/live2026');
  for(const name of ['county','kind'])if(u.searchParams.has(name))key.searchParams.set(name,u.searchParams.get(name));
- key.searchParams.set('_v','30s-ref-national');
+ key.searchParams.set('_v','30s-council-revisions');
  const cache=globalThis.caches?.default,cacheRequest=new Request(key.href);
  const hit=await cache?.match(cacheRequest);if(hit)return hit;
  const response=await official2026(request,env);

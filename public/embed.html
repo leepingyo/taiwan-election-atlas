@@ -46,6 +46,8 @@ dialog{border:1px solid var(--line);border-radius:13px;background:var(--white);c
 .leader-row{display:flex;align-items:center;gap:8px;margin-top:8px;width:100%}.leader-row img{object-fit:cover;object-position:top;border-radius:3px;flex-shrink:0}.leader-person{flex:1;min-width:0}.leader-person strong,.leader-person small{display:block}.leader-votes{font-variant-numeric:tabular-nums;white-space:nowrap;font-size:14px}.count-label{display:block;font-size:11px;color:var(--muted);margin-top:5px}.row-button:has(.leader-row)>span{width:100%;min-width:0}.row-button:has(.leader-row)>small{display:none}
 
 .elected-badge{display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:2px 6px;border:1px solid #b62323;border-radius:4px;color:#b62323;background:#fff5f5;font-size:11px;font-weight:700;line-height:1.3;vertical-align:middle;white-space:nowrap}.elected-badge svg{flex-shrink:0}.leader-person .elected-badge span{display:inline}
+
+.self-declared-badge{display:inline-flex;align-items:center;gap:3px;margin-left:5px;padding:2px 5px;border:1px solid #7544a0;border-radius:4px;color:#63338c;background:#faf4ff;font-size:11px;font-weight:700;line-height:1.3;vertical-align:middle;white-space:nowrap}.declaration-source{font-size:11px;line-height:1.5;color:var(--muted);padding:0 8px 8px;margin:0 0 8px}.declaration-source a{color:inherit;text-decoration:underline}.council-metadata{font-size:12px}
 </style>
 </head>
 <body>
@@ -299,13 +301,51 @@ function renderMap() {
 const mayorPortrait = (c,name) => data[c]?.mayorOfficial26?.candidates.find(p=>p.name===name);
 const mayorThumbs = c => era==='2026' ? '<span class="mayor-previews">'+mayors(c).map(r=>{const p=mayorPortrait(c,r[0]);return p?'<img src="'+p.photo+'" alt="'+escape(p.name)+'" width="28" height="36" loading="lazy" decoding="async">':'';}).join('')+'</span>' : '';
 const electedBadge = () => '<span class="elected-badge" role="img" aria-label="當選"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><circle cx="10" cy="10" r="9" fill="currentColor"/><path d="m5.5 10 3 3 6-6" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>當選</span></span>';
+let selfDeclarations={},liveCouncilMetadata={},officialCouncilAdjustments={};
+const safeSourceUrl = value => {try{const u=new URL(value);return u.protocol==='https:'&&!u.username&&!u.password?u.href:'';}catch{return '';}};
+const declarationFor = (c,name) => selfDeclarations[c]?.find(d=>d.name===name&&d.status==='self_declared');
+const selfDeclaredBadge = d => '<span class="self-declared-badge" role="img" aria-label="自行宣布當選" title="'+escape(d.sourceTitle)+'"><span aria-hidden="true">✓</span> 自行宣布當選</span>';
+const candidateBadge = (c,name,winner,votes,allowDeclaration=true) => winner&&votes!==null?electedBadge():allowDeclaration&&declarationFor(c,name)?selfDeclaredBadge(declarationFor(c,name)):'';
+const declarationSources = c => (selfDeclarations[c]||[]).map(d=>'<p class="declaration-source">'+escape(d.name)+'：<a href="'+escape(d.sourceUrl)+'" target="_blank" rel="noopener">'+escape(d.sourceTitle)+' ↗</a><br>查核時間：'+escape(new Date(d.verifiedAt).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'}))+'；自行宣布，尚非中選會當選公告。</p>').join('');
+const councilMetadataNote = (c,id) => {
+  const m=liveCouncilMetadata[c]?.[id]||{},adjustment=officialCouncilAdjustments[c]?.[id];if(!Object.keys(m).length&&!adjustment)return '';
+  let text=Number.isSafeInteger(m.seats)&&m.seats>=0?'官方應選 '+m.seats+' 席':'';
+  if(Number.isSafeInteger(m.womenSeats)&&m.womenSeats>=0)text+='；女性應當選名額 '+m.womenSeats+' 席';
+  if(m.officialWinnersAvailable)text+='；官方已標記當選 '+(result2026(c).council?.[id]||[]).filter(r=>r[3]).length+' 席';
+  if(m.revision)text+='。中選會當選名單已更新（'+new Date(m.revision.updatedAt).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})+'）';
+  const quotaNotes=(m.womenQuotaNotes||[]).filter(n=>typeof n.name==='string'&&typeof n.reason==='string').map(n=>n.name+'：'+n.reason).join('；');
+  if(quotaNotes)text+='。官方女性名額註記：'+quotaNotes;
+  if(adjustment)text+='。中選會女性名額／當選名單調整：'+adjustment.note;
+  const source=safeSourceUrl(adjustment?.sourceUrl||m.sourceUrl);
+  return '<p class="note council-metadata">'+escape(text)+'。依中選會最新標記更新，不以票數排名自行推算女性名額遞補。'+(source?' <a href="'+escape(source)+'" target="_blank" rel="noopener">官方資料 ↗</a>':'')+'</p>';
+};
+async function syncElectionAnnotations(){
+  try{
+    const r=await fetch('https://taiwan-election-atlas.pages.dev/data/election-annotations.json',{cache:'no-store',signal:AbortSignal.timeout(8000)});
+    if(!r.ok)return;const p=await r.json();
+    if(p.schemaVersion!==1||p.electionYear!==2026||!Array.isArray(p.declarations))return;
+    const next={};
+    for(const d of p.declarations){
+      if(d.status!=='self_declared'||!data[d.county]?.mayorOfficial26?.candidates.some(c=>c.name===d.name)||!safeSourceUrl(d.sourceUrl)||typeof d.sourceTitle!=='string'||!Number.isFinite(Date.parse(d.verifiedAt)))continue;
+      const list=next[d.county]||=[];if(!list.some(x=>x.name===d.name))list.push(d);
+    }
+    const adjustments={};
+    for(const a of p.councilAdjustments||[]){
+      const source=safeSourceUrl(a.sourceUrl);if(!source)continue;
+      const host=new URL(source).hostname;
+      if(!(host==='cec.gov.tw'||host.endsWith('.cec.gov.tw'))||!data[a.county]?.council?.[a.district]||typeof a.note!=='string'||!a.note.trim()||a.note.length>2000||!Number.isFinite(Date.parse(a.verifiedAt)))continue;
+      (adjustments[a.county]||={})[a.district]=a;
+    }
+    officialCouncilAdjustments=adjustments;selfDeclarations=next;renderDetail();
+  }catch{}
+}
 const nationalMayorSummary = c => {
   const rs=mayors(c);
   if(!hasCountedVotes(rs))return '<small>'+escape(rs.map(r=>r[0]).join('、')||'候選人資料待匯入')+'</small>'+mayorThumbs(c)+'<small class="count-label">待開票</small>';
   const ranked=rankedCandidates(rs),tie=ranked[0]?.[2]===ranked[1]?.[2];
   return '<span class="count-label">'+(tie?'同票領先':'目前票數前二名')+' · '+(era==='2026'?'開票速報':'2022 結果')+'</span>'+ranked.slice(0,2).map(([name,party,votes,winner],i)=>{
     const p=era==='2026'?mayorPortrait(c,name):null;
-    return '<span class="leader-row">'+(p?'<img src="'+p.photo+'" alt="" width="30" height="38" loading="lazy">':'')+'<span class="leader-person"><strong>'+escape(name)+(winner&&votes!==null?electedBadge():'')+'</strong><small><i class="dot" style="background:var(--'+(parties[party]||'other')+')"></i>'+escape(party)+'</small></span><b class="leader-votes">'+(votes===null?'待開票':fmt(votes)+' 票')+'</b></span>';
+    return '<span class="leader-row">'+(p?'<img src="'+p.photo+'" alt="" width="30" height="38" loading="lazy">':'')+'<span class="leader-person"><strong>'+escape(name)+candidateBadge(c,name,winner,votes,era==='2026')+'</strong><small><i class="dot" style="background:var(--'+(parties[party]||'other')+')"></i>'+escape(party)+'</small></span><b class="leader-votes">'+(votes===null?'待開票':fmt(votes)+' 票')+'</b></span>';
   }).join('');
 };
 function rows(rs,showWinners=true,showPortraits=false) {
@@ -316,7 +356,7 @@ function rows(rs,showWinners=true,showPortraits=false) {
     const portrait=showPortraits&&era==='2026'?mayorPortrait(county,name):null;
     const head=portrait?'<img class="candidate-portrait" src="'+portrait.photo+'" alt="'+escape(name)+'大頭照" width="56" height="72" loading="lazy" decoding="async">':'';
     const number=portrait?'<span class="candidate-number">'+portrait.number+'</span>':'';
-    return '<div class="row"><span class="candidate-identity">'+head+'<span><strong>'+number+(votes===null?'':(i+1)+'　')+escape(name)+'</strong>'+(winner&&votes!==null?electedBadge():'')+'<br><small><i class="dot" style="background:var(--'+p+')"></i>'+escape(party)+'</small></span></span><b>'+(votes===null?'待開票':fmt(votes)+' 票')+'</b></div>';
+    return '<div class="row"><span class="candidate-identity">'+head+'<span><strong>'+number+(votes===null?'':(i+1)+'　')+escape(name)+'</strong>'+candidateBadge(county,name,winner,votes,showPortraits&&era==='2026')+'<br><small><i class="dot" style="background:var(--'+p+')"></i>'+escape(party)+'</small></span></span><b>'+(votes===null?'待開票':fmt(votes)+' 票')+'</b></div>';
   }).join('');
 }
 function districtButtons(kind,d) {
@@ -334,7 +374,7 @@ function renderDetail(){
     else html+='<div class="note">首長顏色與候選人採 2022 年結果。議員席次採 2026 年公告。</div>';
     html+=counties.map(c=>{
       const candidates=mayors(c).map(r=>r[0]).join('、');
-      return '<button type="button" class="row row-button" data-c="'+c+'"><span><strong><i class="dot" style="background:'+fill('county',c)+'"></i>'+c+'</strong>'+nationalMayorSummary(c)+'</span><small>'+data[c].seats+' 議員席</small></button>';
+      return '<button type="button" class="row row-button" data-c="'+c+'"><span><strong><i class="dot" style="background:'+fill('county',c)+'"></i>'+c+'</strong>'+nationalMayorSummary(c)+'</span><small>'+data[c].seats+' 議員席</small></button>'+(era==='2026'?declarationSources(c):'');
     }).join('');
   }else{
     const d=data[county];
@@ -362,6 +402,7 @@ function renderDetail(){
       if(district)html+='<p class="scope">首長以全縣市為選舉區。此處顯示區域立委選區範圍內的首長得票小計。</p>';
       if(era==='2026'&&d.mayorOfficial26)html+='<a class="bulletin-link" href="'+escape(d.mayorOfficial26.bulletinUrl)+'" target="_blank" rel="noopener">查看'+escape(county)+'首長正式選舉公報（PDF）↗</a>';
       html+=rows(rs||[],!town&&!district,true);
+      if(era==='2026')html+=declarationSources(county);
     } else {
       html+='<div class="tabs">'+[2026,2022].map(y=>button(y+' 議員','data-council-year="'+y+'" aria-pressed="'+(String(y)===councilEra)+'"')).join('')+'</div>';
       const items=councilEra==='2026'?d.council:d.council22;
@@ -374,7 +415,7 @@ function renderDetail(){
         const e=items[k], all=councilEra==='2026'?(result2026(county).council?.[k]||[]):e.results;
         const result=councilEra==='2026'?rankedCandidates(all):all;
         const scope=e.scope?'<p class="scope">'+escape(e.scope)+'</p>':'';
-        return '<p class="summary">'+districtTitle(k)+(e.seats?'　·　'+e.seats+' 席':'')+'</p>'+scope+rows(result,false);
+        return '<p class="summary">'+districtTitle(k)+(e.seats?'　·　'+e.seats+' 席':'')+'</p>'+scope+(councilEra==='2026'?councilMetadataNote(county,k):'')+rows(result,false);
       }).join('');
     }
   }
@@ -490,6 +531,7 @@ if(embedded){
 async function syncOfficialCounts(){
   if(document.hidden||syncingOfficialCounts)return;
   syncingOfficialCounts=true;
+  void syncElectionAnnotations();
   const info=$('cecImportInfo'),base='https://taiwan-election-atlas.pages.dev/api/live2026';
   let accepted=0,issue=false;
   const ingest=async suffix=>{
@@ -508,6 +550,7 @@ async function syncOfficialCounts(){
       for(const [k,v] of Object.entries(e))current[k]=Array.isArray(v)?v:{...current[k],...v};
     }
     accepted++;issue ||= !!(payload.stale||payload.partial);
+    if(payload.councilMetadata&&typeof payload.councilMetadata==='object')for(const [c,m] of Object.entries(payload.councilMetadata))if(data[c])liveCouncilMetadata[c]={...liveCouncilMetadata[c],...m};
     if(!suffix){
       officialCountingStage=payload.status==='final_results'?'final':'count';
       officialNationalProgress=payload.progress||null;

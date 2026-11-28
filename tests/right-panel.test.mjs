@@ -50,5 +50,17 @@ for(const file of ['index.html','embed.html']){
  assert.ok(councilHtml.includes('候選甲')&&councilHtml.includes('候選乙')&&councilHtml.includes('候選丙'),file+' council counts show unelected candidates too');
  assert.ok(councilHtml.indexOf('候選乙')<councilHtml.indexOf('候選丙')&&councilHtml.indexOf('候選丙')<councilHtml.indexOf('候選甲'),file+' council counts rank by votes');
  assert.equal((councilHtml.match(/class="elected-badge"/g)||[]).length,1);
+ vm.runInContext("county='';liveResults['臺北市'].mayor[0][3]=false;selfDeclarations={'臺北市':[{name:'蔣萬安',status:'self_declared',sourceUrl:'https://www.cna.com.tw/news/aipl/example.aspx',sourceTitle:'候選人宣布消息',verifiedAt:'2026-11-28T12:00:00Z'}]};renderDetail()",context);
+ assert.ok(elements.get('detail').innerHTML.includes('自行宣布當選'));
+ assert.ok(elements.get('detail').innerHTML.includes('https://www.cna.com.tw/news/aipl/example.aspx'));
+ vm.runInContext("liveResults['臺北市'].mayor[0][3]=true;renderDetail()",context);
+ assert.equal((elements.get('detail').innerHTML.match(/class="self-declared-badge"/g)||[]).length,0,file+' official election supersedes self declaration');
+ vm.runInContext("county='臺北市';tab='council';liveCouncilMetadata={'臺北市':{'1':{seats:12,womenSeats:3,officialWinnersAvailable:true,womenQuotaNotes:[{name:'候選丙',reason:'婦女保障名額當選'}],revision:{updatedAt:'2026-11-28T12:00:00Z'},sourceUrl:'https://vote.cec.gov.tw/2026-local/zh-TW/T1/63000010000000000.html'}}};renderDetail()",context);
+ assert.ok(elements.get('detail').innerHTML.includes('女性應當選名額 3 席'));
+ assert.ok(elements.get('detail').innerHTML.includes('中選會當選名單已更新'));
+ assert.ok(elements.get('detail').innerHTML.includes('候選丙：婦女保障名額當選'));
+ context.URL=URL;context.AbortSignal=AbortSignal;context.fetch=async()=>({ok:true,json:async()=>JSON.parse(await readFile(new URL('../public/data/election-annotations.json',import.meta.url),'utf8'))});
+ await vm.runInContext('syncElectionAnnotations()',context);
+ assert.equal(vm.runInContext('Object.values(selfDeclarations).flat().length',context),JSON.parse(await readFile(new URL('../public/data/election-annotations.json',import.meta.url),'utf8')).declarations.length,file+' verified declarations load via actual sync');
  console.log('PASS '+file+': national list, mayor names/portraits, township mayors and council render');
 }
