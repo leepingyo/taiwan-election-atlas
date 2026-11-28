@@ -22,6 +22,7 @@ for(const file of ['index.html','embed.html']){
  assert.equal(vm.runInContext("fill('county','臺北市')",context),'var(--green)',file+' current leader overrides old manual color');
  let card=elements.get('detail').innerHTML.match(/data-c="臺北市"[\s\S]*?<\/button>/)[0];
  assert.ok(card.indexOf('沈伯洋')<card.indexOf('蔣萬安'));assert.ok(!card.includes('郭璽'));assert.ok(card.includes('1,200 票')&&card.includes('900 票'));
+ assert.ok(!card.includes('class="elected-badge"'),file+' leading does not mean elected');
  vm.runInContext("liveResults['臺北市'].mayor[1][2]=1500;renderDetail()",context);
  assert.equal(vm.runInContext("fill('county','臺北市')",context),'var(--blue)',file+' lead changes update color');
  vm.runInContext("liveResults['臺北市'].mayor[2][2]=1500;renderDetail()",context);
@@ -38,5 +39,11 @@ for(const file of ['index.html','embed.html']){
  vm.runInContext("county='臺北市';tab='mayor';officialProgressByCounty={};renderDetail()",context);
  assert.ok(elements.get('detail').innerHTML.includes('官方尚未提供此縣市開票百分比'));
  assert.ok(elements.get('detail').innerHTML.includes('每 30 秒檢查更新'));
+ vm.runInContext("county='';liveResults['臺北市'].mayor=[['蔣萬安','中國國民黨',1500,true],['沈伯洋','民主進步黨',1200,false]];renderDetail()",context);
+ assert.equal((elements.get('detail').innerHTML.match(/class="elected-badge"/g)||[]).length,1,file+' homepage official elected badge');
+ vm.runInContext("county='臺北市';tab='mayor';renderDetail()",context);
+ assert.equal((elements.get('detail').innerHTML.match(/class="elected-badge"/g)||[]).length,1,file+' mayor detail elected badge');
+ assert.ok(vm.runInContext("rows([['甲','無黨籍',100,true]],false)",context).includes('class="elected-badge"'),file+' council and township rows retain official elected badge');
+ assert.ok(!vm.runInContext("rows([['甲','無黨籍',null,true]],false)",context).includes('class="elected-badge"'),file+' missing votes do not show elected');
  console.log('PASS '+file+': national list, mayor names/portraits, township mayors and council render');
 }
